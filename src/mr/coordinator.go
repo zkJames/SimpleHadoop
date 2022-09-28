@@ -1,5 +1,6 @@
 package mr
 
+import "fmt"
 import "log"
 import "net"
 import "os"
@@ -13,6 +14,9 @@ type Coordinator struct {
 }
 
 // Your code here -- RPC handlers for the worker to call.
+
+
+
 
 //
 // an example RPC handler.
@@ -46,7 +50,7 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	ret := false
+	ret := true
 
 	// Your code here.
 
@@ -61,9 +65,10 @@ func (c *Coordinator) Done() bool {
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-
+	
 	// Your code here.
-
+	//划分
+	fmt.Printf("string 划分\n")
 
 	c.server()
 	return &c

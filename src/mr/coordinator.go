@@ -21,7 +21,9 @@ const (
 
 //任务
 type Task struct {
+	TaskNo   int    //任务序号
 	FileName string //文件名
+	NReduce  int    //Reducer数量，用于中间结果拆分
 	Type     Status //标识0假任务停止,1map,2reduce
 }
 
@@ -85,14 +87,24 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
-	mCoordinator := {
-		TaskQueue: 
+	c := Coordinator{
+		TaskQueue:     make(chan *Task, len(files)),
+		TaskStatusMap: make(map[int]*TaskStatus),
+		NReduce:       nReduce,
 	}
 	// Your code here.
 	// 创建Map任务
-	fmt.Printf("Coordinator::创建Map任务\n")
+	fmt.Printf("Coordinator::开始创建Map任务\n")
+	//根据文件数量创建Task
+	for index, fileName := range files {
+		task := Task{
+			TaskNo:   index,
+			NReduce:  nReduce,
+			Type:     Map,
+			FileName: fileName,
+		}
 
+	}
 	c.server()
 	return &c
 }

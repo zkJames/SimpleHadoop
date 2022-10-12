@@ -25,6 +25,18 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+// 从coordinator获取一个Task
+func getTask() {
+	task := Task{}
+	args := ExampleArgs{}
+	ok := call("Coordinator.AssignTask", &args, &task)
+	if ok {
+		fmt.Printf("get the %v task\n", task.TaskNo)
+	} else {
+		fmt.Printf("get task failed!\n")
+	}
+}
+
 //
 // main/mrworker.go calls this function.
 //

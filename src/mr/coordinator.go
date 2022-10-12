@@ -7,23 +7,29 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
 )
 
+// 互斥锁
+var mu sync.Mutex
+
 // 任务类型枚举
-type Status int
+type Type int
 
 const (
-	Map Status = iota
+	Map Type = iota
 	Reduce
 	Wait
 	Stop
 )
 
 // 协调者观察任务的分配状况
-type AssignedStatus int
+type Status int
 
-const(
-	
+const (
+	UnAssigned Status = iota //未分配
+	Assigned                 //已分配
+	Finished                 //完成
 )
 
 //任务
@@ -31,7 +37,7 @@ type Task struct {
 	TaskNo   int    //任务序号
 	FileName string //文件名
 	NReduce  int    //Reducer数量，用于中间结果拆分
-	Type     Status //标识0假任务停止,1map,2reduce
+	TaskType Type   //标识0假任务停止,1map,2reduce
 }
 
 //任务状态结构体
@@ -88,6 +94,20 @@ func (c *Coordinator) Done() bool {
 	return ret
 }
 
+// 由worker调用，分配任务
+func (c *Coordinator) AssignTask(args *ExampleArgs, reply *Task) error {
+	// 从队列取一个任务
+	mu.Lock()
+	defer mu.Unlock()
+	// 如果队列不为空
+	if len(c.TaskQueue) != 0 {
+		// 出队一个Task
+		*reply = *<-c.TaskQueue
+		c.TaskStatusMap[reply.TaskNo].StatusNow = Assigned
+	}
+	return nil
+}
+
 //
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
@@ -99,25 +119,24 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		TaskStatusMap: make(map[int]*TaskStatus),
 		NReduce:       nReduce,
 	}
-	// Your code here.
 	// 创建Map任务
 	fmt.Printf("Coordinator::开始创建Map任务\n")
 	//根据文件数量创建Task
 	for index, fileName := range files {
-		//创建Task
+		// 初始化Task
 		task := Task{
 			TaskNo:   index,
 			NReduce:  nReduce,
-			Type:     Map,
+			TaskType: Map,
 			FileName: fileName,
 		}
-		c.TaskStatusMap[idx] = &TaskStatus{
-			TaskRef: &task,
-			TaskStatus: 
+		// 把任务状态存入map中
+		c.TaskStatusMap[index] = &TaskStatus{
+			TaskRef:   &task,
+			StatusNow: UnAssigned,
 		}
-		//把Task入队
+		// 把Task入队
 		c.TaskQueue <- &task
-
 	}
 	c.server()
 	return &c

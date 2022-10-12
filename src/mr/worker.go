@@ -3,8 +3,11 @@ package mr
 import (
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
 	"log"
 	"net/rpc"
+	"os"
+	"time"
 )
 
 //
@@ -26,7 +29,7 @@ func ihash(key string) int {
 }
 
 // 从coordinator获取一个Task
-func getTask() {
+func getTask() Task {
 	task := Task{}
 	args := ExampleArgs{}
 	ok := call("Coordinator.AssignTask", &args, &task)
@@ -35,6 +38,7 @@ func getTask() {
 	} else {
 		fmt.Printf("get task failed!\n")
 	}
+	return task
 }
 
 //
@@ -42,11 +46,28 @@ func getTask() {
 //
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
+	for {
+		task := getTask()
+		switch task.TaskType {
+		case Map:
+			filename := task.FileName
+			file, err := os.Open(filename)
+			if err != nil {
+				log.Fatalf("cannot open %v", filename)
+			}
+			content, err := ioutil.ReadAll(file)
+			if err != nil {
+				log.Fatalf("cannot read %v", filename)
+			}
+			file.Close()
+			kva := mapf(filename, string(content))
+			log.Print(task.TaskNo, "task ::", kva)
+		case Reduce:
 
-	// Your worker implementation here.
-	CallExample()
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
+		case Wait:
+			time.Sleep(5 * time.Second)
+		}
+	}
 
 }
 

@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-//状态枚举
+// 任务类型枚举
 type Status int
 
 const (
@@ -17,6 +17,13 @@ const (
 	Reduce
 	Wait
 	Stop
+)
+
+// 协调者观察任务的分配状况
+type AssignedStatus int
+
+const(
+	
 )
 
 //任务
@@ -97,12 +104,19 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	fmt.Printf("Coordinator::开始创建Map任务\n")
 	//根据文件数量创建Task
 	for index, fileName := range files {
+		//创建Task
 		task := Task{
 			TaskNo:   index,
 			NReduce:  nReduce,
 			Type:     Map,
 			FileName: fileName,
 		}
+		c.TaskStatusMap[idx] = &TaskStatus{
+			TaskRef: &task,
+			TaskStatus: 
+		}
+		//把Task入队
+		c.TaskQueue <- &task
 
 	}
 	c.server()

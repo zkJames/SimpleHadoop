@@ -1,22 +1,45 @@
 package mr
 
-import "fmt"
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+import (
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+)
 
+//状态枚举
+type Status int
 
+const (
+	Map Status = iota
+	Reduce
+	Wait
+	Stop
+)
+
+//任务
+type Task struct {
+	FileName string //文件名
+	Type     Status //标识0假任务停止,1map,2reduce
+}
+
+//任务状态结构体
+type TaskStatus struct {
+	StatusNow Status //此任务当前的状态
+	TaskRef   *Task  //指向任务
+}
+
+// 定义在Coordinator中的变量
 type Coordinator struct {
 	// Your definitions here.
-
+	TaskQueue     chan *Task          //任务队列
+	TaskStatusMap map[int]*TaskStatus //记录任务状态的map,key序列号，value任务状态
+	NReduce       int                 //记录有多少个Reduce
 }
 
 // Your code here -- RPC handlers for the worker to call.
-
-
-
 
 //
 // an example RPC handler.
@@ -27,7 +50,6 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
 }
-
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -54,7 +76,6 @@ func (c *Coordinator) Done() bool {
 
 	// Your code here.
 
-
 	return ret
 }
 
@@ -65,10 +86,12 @@ func (c *Coordinator) Done() bool {
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-	
+	mCoordinator := {
+		TaskQueue: 
+	}
 	// Your code here.
-	//划分
-	fmt.Printf("string 划分\n")
+	// 创建Map任务
+	fmt.Printf("Coordinator::创建Map任务\n")
 
 	c.server()
 	return &c

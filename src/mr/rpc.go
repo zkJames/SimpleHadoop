@@ -14,6 +14,8 @@ import "strconv"
 // and reply for an RPC.
 //
 
+
+
 type ExampleArgs struct {
 	X int
 }

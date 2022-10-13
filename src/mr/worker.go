@@ -1,12 +1,14 @@
 package mr
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
 	"log"
 	"net/rpc"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -41,6 +43,17 @@ func getTask() Task {
 	return task
 }
 
+// 处理Task后，将结果发送给Coordinator
+func returnTask(task Task) {
+	args := ExampleArgs{}
+	ok := call("Coordinator.AssignTask", &args, &task)
+	if ok {
+		fmt.Printf("get the %v task\n", task.TaskNo)
+	} else {
+		fmt.Printf("get task failed!\n")
+	}
+}
+
 //
 // main/mrworker.go calls this function.
 //
@@ -55,13 +68,41 @@ func Worker(mapf func(string, string) []KeyValue,
 			if err != nil {
 				log.Fatalf("cannot open %v", filename)
 			}
-			content, err := ioutil.ReadAll(file)
+			content, err := ioutil.ReadAll(file) // 读取内容
 			if err != nil {
 				log.Fatalf("cannot read %v", filename)
 			}
 			file.Close()
-			kva := mapf(filename, string(content))
-			log.Print(task.TaskNo, "task ::", kva)
+			kvs := mapf(filename, string(content)) // 调用mapf把内容转化为kv
+			kvmap := make(map[int][]KeyValue)      //key:哈希 % R数目  v:value
+			//遍历kvs，取出kv 按照key的哈希分区
+			for _, kv := range kvs {
+				kvmap[ihash(kv.Key)%task.NReduce] = append(kvmap[ihash(kv.Key)%task.NReduce], kv)
+			}
+			mapResultNames := make(map[int][]string, 0)
+			// 将kvmap存储到文件
+			for reduceNo, kvs := range kvmap {
+				dir, _ := os.Getwd()
+				tempFile, err := ioutil.TempFile(dir, "mr-tmp-*")
+				if err != nil {
+					log.Fatal("Failed to create temp file", err)
+				}
+				enc := json.NewEncoder(tempFile)
+				for _, kv := range kvs {
+					if err := enc.Encode(&kv); err != nil {
+						log.Fatal("Failed to write kv pair", err)
+					}
+				}
+				tempFile.Close()
+				outputName := fmt.Sprintf("mr-%d-%d", task.TaskNo, reduceNo)
+				os.Rename(tempFile.Name(), outputName)
+				filepath.Join(dir, outputName)
+				//将文件路径保存
+				mapResultNames[reduceNo] = append(mapResultNames[reduceNo], outputName)
+			}
+			//将文件路径map装入task 发回Coordinator
+			task.MapResultNames = mapResultNames
+			returnTask(task)
 		case Reduce:
 
 		case Wait:
@@ -72,7 +113,7 @@ func Worker(mapf func(string, string) []KeyValue,
 }
 
 //
-// example function to show how to make an RPC call to the coordinator.
+// example function to show how to make an RPC call to the coordintor.
 //
 // the RPC argument and reply types are defined in rpc.go.
 //

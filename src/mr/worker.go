@@ -79,6 +79,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			// 将kvmap存储到文件
 			for reduceNo, kvs := range kvmap {
 				dir, _ := os.Getwd()
+				// 创建一个临时文件
 				tempFile, err := ioutil.TempFile(dir, "mr-tmp-*")
 				if err != nil {
 					log.Fatal("Failed to create temp file", err)
@@ -92,7 +93,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				tempFile.Close()
 				outputName := fmt.Sprintf("mr-%d-%d", task.TaskNo, reduceNo)
 				os.Rename(tempFile.Name(), outputName)
-				filepath.Join(dir, outputName)
+				filepath.Join(dir, outputName) //拼接得到路径
 				//将文件路径保存
 				mapResultNames[reduceNo] = append(mapResultNames[reduceNo], outputName)
 			}

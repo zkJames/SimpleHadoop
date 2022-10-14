@@ -61,20 +61,15 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	for {
 		task := getTask()
+		fmt.Printf("Worker::获取第%d个任务 %d类型\n", task.TaskNo, task.TaskType)
 		switch task.TaskType {
 		case Map:
-			filename := task.FileName
-			file, err := os.Open(filename)
+			content, err := ioutil.ReadFile(task.FileName)
 			if err != nil {
-				log.Fatalf("cannot open %v", filename)
+				log.Fatal("Failed to read file: "+task.FileName, err)
 			}
-			content, err := ioutil.ReadAll(file) // 读取内容
-			if err != nil {
-				log.Fatalf("cannot read %v", filename)
-			}
-			file.Close()
-			kvs := mapf(filename, string(content)) // 调用mapf把内容转化为kv
-			kvmap := make(map[int][]KeyValue)      //key:哈希 % R数目  v:value
+			kvs := mapf(task.FileName, string(content)) // 调用mapf把内容转化为kv
+			kvmap := make(map[int][]KeyValue)           //key:reduce号  v:kv 列表
 			//遍历kvs，取出kv 按照key的哈希分区
 			for _, kv := range kvs {
 				kvmap[ihash(kv.Key)%task.NReduce] = append(kvmap[ihash(kv.Key)%task.NReduce], kv)
@@ -99,6 +94,11 @@ func Worker(mapf func(string, string) []KeyValue,
 				filepath.Join(dir, outputName)
 				//将文件路径保存
 				mapResultNames[reduceNo] = append(mapResultNames[reduceNo], outputName)
+			}
+			fmt.Printf("Worker::第%d个任务,发回了%d个文件结果\n", task.TaskNo, len(mapResultNames))
+			for key, value := range task.MapResultNames {
+				fmt.Printf("ReduceNo::%d\n", key)
+				fmt.Printf("%v\n", value)
 			}
 			//将文件路径map装入task 发回Coordinator
 			task.MapResultNames = mapResultNames

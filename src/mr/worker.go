@@ -46,7 +46,7 @@ func getTask() Task {
 // 处理Task后，将结果发送给Coordinator
 func returnTask(task Task) {
 	args := ExampleArgs{}
-	ok := call("Coordinator.AssignTask", &args, &task)
+	ok := call("Coordinator.receiveBackTask", &args, &task)
 	if ok {
 		fmt.Printf("get the %v task\n", task.TaskNo)
 	} else {
@@ -66,8 +66,9 @@ func Worker(mapf func(string, string) []KeyValue,
 		case Map:
 			content, err := ioutil.ReadFile(task.FileName)
 			if err != nil {
-				log.Fatal("Failed to read file: "+task.FileName, err)
+				log.Fatal("Failed to read file: " + task.FileName)
 			}
+			//将coordinator 传入的文件名对应的文件读取，得到kv的数组
 			kvs := mapf(task.FileName, string(content)) // 调用mapf把内容转化为kv
 			kvmap := make(map[int][]KeyValue)           //key:reduce号  v:kv 列表
 			//遍历kvs，取出kv 按照key的哈希分区

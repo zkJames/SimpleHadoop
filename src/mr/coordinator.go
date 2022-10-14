@@ -128,6 +128,15 @@ func (c *Coordinator) receiveBackTask(args *ExampleArgs, task *Task) error {
 		return nil
 	}
 	c.TaskStatusMap[task.TaskNo].StatusNow = Finished //标记此任务完成，若每个Task都拥有了此标记，则退出Map
+	// 启动协程， 保存中间文件的路径
+	go c.handleTaskResult(task)
+	return nil
+}
+
+// 解析任务，存储信息
+func (c *Coordinator) handleTaskResult(task *Task) {
+	mu.Lock()
+	defer mu.Unlock()
 	// 按照reduceNo，保存返回的文件路径
 	for reduceNo, filePaths := range task.MapResultNames {
 		c.IntermediateMap[reduceNo] = append(c.IntermediateMap[reduceNo], filePaths...)
@@ -146,34 +155,7 @@ func (c *Coordinator) receiveBackTask(args *ExampleArgs, task *Task) error {
 			fmt.Println(value)
 		}
 	}
-	// 启动协程， 保存中间文件的路径
-	// go c.handleTaskResult(task)
-	return nil
 }
-
-// // 解析任务，存储信息
-// func (c *Coordinator) handleTaskResult(task *Task) {
-// 	mu.Lock()
-// 	defer mu.Unlock()
-// 	// 按照reduceNo，保存返回的文件路径
-// 	for reduceNo, filePaths := range task.MapResultNames {
-// 		c.IntermediateMap[reduceNo] = append(c.IntermediateMap[reduceNo], filePaths...)
-// 	}
-// 	fmt.Printf("存入了第 %v 个任务\n", task.TaskNo)
-// 	for key, value := range c.IntermediateMap {
-// 		fmt.Println(key)
-// 		fmt.Println(value)
-// 	}
-// 	// 如果任务全部完成了，全局状态转换为Reduce
-// 	if c.isAllFinished() {
-// 		c.TotalType = Reduce
-// 		fmt.Printf("Map任务已经全部完成\n")
-// 		for key, value := range c.IntermediateMap {
-// 			fmt.Println(key)
-// 			fmt.Println(value)
-// 		}
-// 	}
-// }
 
 // 遍历状态表，检测是否全部完成
 func (c *Coordinator) isAllFinished() bool {

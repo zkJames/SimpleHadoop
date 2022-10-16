@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -19,10 +20,14 @@ type KeyValue struct {
 	Value string
 }
 
-//
-// use ihash(key) % NReduce to choose the reduce
-// task number for each KeyValue emitted by Map.
-//
+// for sorting by key.
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
+
 func ihash(key string) int {
 	h := fnv.New32a()
 	h.Write([]byte(key))
@@ -66,7 +71,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		case Map:
 			content, err := ioutil.ReadFile(task.FileName)
 			if err != nil {
-				log.Fatal("Failed to read file: " + task.FileName)
+				log.Fatal("Worker::Map Failed to read file: " + task.FileName)
 			}
 			//将coordinator 传入的文件名对应的文件读取，得到kv的数组
 			kvs := mapf(task.FileName, string(content)) // 调用mapf把内容转化为kv
@@ -93,6 +98,23 @@ func Worker(mapf func(string, string) []KeyValue,
 			task.MapResultNames = mapResultNames
 			returnTask(&task)
 		case Reduce:
+			kva := []KeyValue{}
+			for _, filepath := range task.ReduceFileNames {
+				file, err := os.Open(filepath)
+				if err != nil {
+					log.Fatal("Worker::Reducer Failed to open file "+filepath, err)
+				}
+				dec := json.NewDecoder(file)
+				for {
+					var kv KeyValue
+					if err := dec.Decode(&kv); err != nil {
+						break
+					}
+					kva = append(kva, kv)
+				}
+				file.Close()
+			}
+			sort.Sort(ByKey(kva))
 
 		case Wait:
 			time.Sleep(5 * time.Second)

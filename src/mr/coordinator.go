@@ -34,11 +34,12 @@ const (
 
 //任务
 type Task struct {
-	TaskNo         int            //任务序号
-	FileName       string         //文件名
-	NReduce        int            //Reducer数量，用于中间结果拆分
-	TaskType       Type           //标识任务种类
-	MapResultNames map[int]string //记录Map返回值，key reduce号，value 文件地址
+	TaskNo          int            //任务序号
+	FileName        string         //文件名
+	NReduce         int            //Reducer数量，用于中间结果拆分
+	TaskType        Type           //标识任务种类
+	MapResultNames  map[int]string //记录Map返回值，key reduce号，value 文件地址
+	ReduceFileNames []string       //Reduce中间文件位置信息
 }
 
 //任务状态结构体
@@ -56,8 +57,6 @@ type Coordinator struct {
 	TotalType       Type                //全局的任务阶段，Map/Reduce
 	IntermediateMap map[int][]string    //中间文件表，key：reduce号，value：文件名数组
 }
-
-// Your code here -- RPC handlers for the worker to call.
 
 //
 // an example RPC handler.
@@ -106,9 +105,6 @@ func (c *Coordinator) AssignTask(args *ExampleArgs, reply *Task) error {
 		// 出队一个Task
 		*reply = *<-c.TaskQueue
 		c.TaskStatusMap[reply.TaskNo].StatusNow = Assigned
-	} else if c.TotalType == Reduce {
-		*reply = *<-c.TaskQueue
-
 	} else {
 		*reply = Task{TaskType: Wait}
 	}
@@ -141,22 +137,22 @@ func (c *Coordinator) handleTaskResult(task *Task) {
 	}
 	// 如果任务全部完成了，全局状态转换为Reduce
 	if c.isAllFinished() {
-		c.TotalType = Reduce
-		fmt.Printf("Map任务已经全部完成,进入Reduce状态\n")
+		fmt.Printf("coordinator::Map任务已经全部完成,进入Reduce状态\n")
 		fmt.Printf("coordinator:::::Map最终中间文件位置: %v\n", c.IntermediateMap)
-		c.produceReduceTasks()
+		c.enqueueReduceTasks()
 	}
 	fmt.Printf("存入了第 %v 个任务中间文件路径\n", task.TaskNo)
 }
 
-// c
-func (c *Coordinator) produceMapTasks(files []string, nReduce int) {
+// 产生Map Tasks
+func (c *Coordinator) enqueueMapTasks(files []string) {
+	c.TotalType = Map
 	//根据文件数量创建Task
 	for index, fileName := range files {
 		// 初始化Task
 		task := Task{
 			TaskNo:   index,
-			NReduce:  nReduce,
+			NReduce:  c.NReduce,
 			TaskType: Map,
 			FileName: fileName,
 		}
@@ -171,9 +167,26 @@ func (c *Coordinator) produceMapTasks(files []string, nReduce int) {
 	}
 }
 
-func (c *Coordinator) produceReduceTasks() {
+// 产生Reduce Tasks
+func (c *Coordinator) enqueueReduceTasks() {
+	c.TaskStatusMap = make(map[int]*TaskStatus)
+	c.TotalType = Reduce
 	//根据nReduce数量创建Task
 	for i := 0; i < c.NReduce; i++ {
+		// 初始化Task
+		task := Task{
+			TaskNo:          i,
+			NReduce:         c.NReduce,
+			TaskType:        Reduce,
+			ReduceFileNames: c.IntermediateMap[i],
+		}
+		// 把任务状态存入map中
+		c.TaskStatusMap[i] = &TaskStatus{
+			TaskRef:   &task,
+			StatusNow: UnAssigned,
+		}
+		// 把Task入队
+		c.TaskQueue <- &task
 		fmt.Printf("Coordinator::第 %d 个 Reduce 任务完成创建\n", i)
 	}
 }
@@ -205,12 +218,11 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		TaskQueue:       make(chan *Task, max(len(files), nReduce)),
 		TaskStatusMap:   make(map[int]*TaskStatus),
 		NReduce:         nReduce,
-		TotalType:       Map,
 		IntermediateMap: make(map[int][]string),
 	}
 	// 创建Map任务
 	fmt.Printf("Coordinator::开始创建Map任务\n")
-	c.produceMapTasks(files)
+	c.enqueueMapTasks(files)
 	c.server()
 	return &c
 }

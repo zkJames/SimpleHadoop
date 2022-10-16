@@ -34,11 +34,11 @@ const (
 
 //任务
 type Task struct {
-	TaskNo         int              //任务序号
-	FileName       string           //文件名
-	NReduce        int              //Reducer数量，用于中间结果拆分
-	TaskType       Type             //标识任务种类
-	MapResultNames map[int][]string //记录Map返回值，key reduce号，value 文件地址
+	TaskNo         int            //任务序号
+	FileName       string         //文件名
+	NReduce        int            //Reducer数量，用于中间结果拆分
+	TaskType       Type           //标识任务种类
+	MapResultNames map[int]string //记录Map返回值，key reduce号，value 文件地址
 }
 
 //任务状态结构体
@@ -90,10 +90,9 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	ret := false
-
-	// Your code here.
-
+	mu.Lock()
+	defer mu.Unlock()
+	ret := c.TotalType == Stop
 	return ret
 }
 
@@ -114,9 +113,10 @@ func (c *Coordinator) AssignTask(args *ExampleArgs, reply *Task) error {
 }
 
 // 接收到mapper处理过后的task
-func (c *Coordinator) ReceiveBackTask(args *ExampleArgs, task *Task) error {
+func (c *Coordinator) ReceiveBackTask(task *Task, reply *ExampleReply) error {
 	mu.Lock()
 	defer mu.Unlock()
+	fmt.Printf("coordinator::ReceiveBackTask %d 任务\n", task.TaskNo)
 	// 如果在Reduce阶段收到了迟来的MapTask返回，或者此任务已经完成，应该丢弃
 	if task.TaskType != c.TotalType || c.TaskStatusMap[task.TaskNo].StatusNow == Finished {
 		return nil
@@ -133,15 +133,16 @@ func (c *Coordinator) handleTaskResult(task *Task) {
 	mu.Lock()
 	defer mu.Unlock()
 	// 按照reduceNo，保存返回的文件路径
-	for reduceNo, filePaths := range task.MapResultNames {
-		c.IntermediateMap[reduceNo] = append(c.IntermediateMap[reduceNo], filePaths...)
+	for reduceNo, filePath := range task.MapResultNames {
+		c.IntermediateMap[reduceNo] = append(c.IntermediateMap[reduceNo], filePath)
 	}
-	fmt.Printf("存入了第 %v 个任务中间文件路径\n", task.TaskNo)
 	// 如果任务全部完成了，全局状态转换为Reduce
 	if c.isAllFinished() {
 		c.TotalType = Reduce
 		fmt.Printf("Map任务已经全部完成\n")
+		fmt.Printf("coordinator:::::最终中间文件位置: %v\n", c.IntermediateMap)
 	}
+	fmt.Printf("存入了第 %v 个任务中间文件路径\n", task.TaskNo)
 }
 
 // 遍历状态表，检测是否全部完成
@@ -154,6 +155,13 @@ func (c *Coordinator) isAllFinished() bool {
 	return true
 }
 
+func max(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 //
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
@@ -161,7 +169,7 @@ func (c *Coordinator) isAllFinished() bool {
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
-		TaskQueue:       make(chan *Task, len(files)),
+		TaskQueue:       make(chan *Task, max(len(files), nReduce)),
 		TaskStatusMap:   make(map[int]*TaskStatus),
 		NReduce:         nReduce,
 		TotalType:       Map,

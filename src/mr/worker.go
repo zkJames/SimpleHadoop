@@ -43,11 +43,12 @@ func getTask() Task {
 }
 
 // 处理Task后，将结果发送给Coordinator
-func returnTask(task Task) {
-	args := ExampleArgs{}
-	ok := call("Coordinator.ReceiveBackTask", &args, &task)
+func returnTask(task *Task) {
+	fmt.Printf("return %v task\n", task.TaskNo)
+	reply := ExampleReply{}
+	ok := call("Coordinator.ReceiveBackTask", task, &reply)
 	if ok {
-		fmt.Printf("return %v task\n", task.TaskNo)
+		fmt.Printf("return %v task successfully\n", task.TaskNo)
 	} else {
 		fmt.Printf("return task failed!\n")
 	}
@@ -72,9 +73,10 @@ func Worker(mapf func(string, string) []KeyValue,
 			kvmap := make(map[int][]KeyValue)           //key:reduce号  v:kv 列表
 			// 将kvs按照哈希值分到nReduce个区域中
 			for _, kv := range kvs {
-				kvmap[ihash(kv.Key)%task.NReduce] = append(kvmap[ihash(kv.Key)%task.NReduce], kv)
+				reduceID := ihash(kv.Key) % task.NReduce
+				kvmap[reduceID] = append(kvmap[reduceID], kv)
 			}
-			mapResultNames := make(map[int][]string) //返回每个路径
+			mapResultNames := make(map[int]string) //返回每个路径
 			for reduceNo, kvs := range kvmap {
 				outputName := fmt.Sprintf("mr-%d-%d", task.TaskNo, reduceNo)
 				file, _ := os.Create(outputName)
@@ -84,12 +86,12 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 				file.Close()
 				// 保存路径
-				mapResultNames[reduceNo] = append(mapResultNames[reduceNo], outputName)
+				mapResultNames[reduceNo] = outputName
 			}
 			fmt.Printf("Worker::第%d个任务,发回了%d个文件结果\n", task.TaskNo, len(mapResultNames))
 			//将文件路径map装入task 发回Coordinator
 			task.MapResultNames = mapResultNames
-			returnTask(task)
+			returnTask(&task)
 		case Reduce:
 
 		case Wait:

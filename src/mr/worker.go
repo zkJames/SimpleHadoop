@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/rpc"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -46,11 +45,11 @@ func getTask() Task {
 // 处理Task后，将结果发送给Coordinator
 func returnTask(task Task) {
 	args := ExampleArgs{}
-	ok := call("Coordinator.receiveBackTask", &args, &task)
+	ok := call("Coordinator.ReceiveBackTask", &args, &task)
 	if ok {
-		fmt.Printf("get the %v task\n", task.TaskNo)
+		fmt.Printf("return %v task\n", task.TaskNo)
 	} else {
-		fmt.Printf("get task failed!\n")
+		fmt.Printf("return task failed!\n")
 	}
 }
 
@@ -71,37 +70,23 @@ func Worker(mapf func(string, string) []KeyValue,
 			//将coordinator 传入的文件名对应的文件读取，得到kv的数组
 			kvs := mapf(task.FileName, string(content)) // 调用mapf把内容转化为kv
 			kvmap := make(map[int][]KeyValue)           //key:reduce号  v:kv 列表
-			//遍历kvs，取出kv 按照key的哈希分区
+			// 将kvs按照哈希值分到nReduce个区域中
 			for _, kv := range kvs {
 				kvmap[ihash(kv.Key)%task.NReduce] = append(kvmap[ihash(kv.Key)%task.NReduce], kv)
 			}
-			mapResultNames := make(map[int][]string, 0)
-			// 将kvmap存储到文件
+			mapResultNames := make(map[int][]string) //返回每个路径
 			for reduceNo, kvs := range kvmap {
-				dir, _ := os.Getwd()
-				// 创建一个临时文件
-				tempFile, err := ioutil.TempFile(dir, "mr-tmp-*")
-				if err != nil {
-					log.Fatal("Failed to create temp file", err)
-				}
-				enc := json.NewEncoder(tempFile)
-				for _, kv := range kvs {
-					if err := enc.Encode(&kv); err != nil {
-						log.Fatal("Failed to write kv pair", err)
-					}
-				}
-				tempFile.Close()
 				outputName := fmt.Sprintf("mr-%d-%d", task.TaskNo, reduceNo)
-				os.Rename(tempFile.Name(), outputName)
-				filepath.Join(dir, outputName) //拼接得到路径
-				//将文件路径保存
+				file, _ := os.Create(outputName)
+				enc := json.NewEncoder(file)
+				for _, kv := range kvs {
+					enc.Encode(kv)
+				}
+				file.Close()
+				// 保存路径
 				mapResultNames[reduceNo] = append(mapResultNames[reduceNo], outputName)
 			}
 			fmt.Printf("Worker::第%d个任务,发回了%d个文件结果\n", task.TaskNo, len(mapResultNames))
-			for key, value := range task.MapResultNames {
-				fmt.Printf("ReduceNo::%d\n", key)
-				fmt.Printf("%v\n", value)
-			}
 			//将文件路径map装入task 发回Coordinator
 			task.MapResultNames = mapResultNames
 			returnTask(task)

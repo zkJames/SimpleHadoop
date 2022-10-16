@@ -144,14 +144,15 @@ func (c *Coordinator) handleTaskResult(task *Task) {
 		c.TotalType = Reduce
 		fmt.Printf("Map任务已经全部完成,进入Reduce状态\n")
 		fmt.Printf("coordinator:::::Map最终中间文件位置: %v\n", c.IntermediateMap)
-		// produceReduceTasks()
+		c.produceReduceTasks()
 	}
 	fmt.Printf("存入了第 %v 个任务中间文件路径\n", task.TaskNo)
 }
+
+// c
 func (c *Coordinator) produceMapTasks(files []string, nReduce int) {
 	//根据文件数量创建Task
 	for index, fileName := range files {
-		fmt.Printf("Coordinator::第 %d 个任务完成创建\n", index)
 		// 初始化Task
 		task := Task{
 			TaskNo:   index,
@@ -166,13 +167,16 @@ func (c *Coordinator) produceMapTasks(files []string, nReduce int) {
 		}
 		// 把Task入队
 		c.TaskQueue <- &task
+		fmt.Printf("Coordinator::第 %d 个 Map 任务完成创建\n", index)
 	}
 }
 
-// func (c *Coordinator) produceReduceTasks() {
-// 	//根据nReduce数量创建Task
-// 	for i := 0; i <
-// }
+func (c *Coordinator) produceReduceTasks() {
+	//根据nReduce数量创建Task
+	for i := 0; i < c.NReduce; i++ {
+		fmt.Printf("Coordinator::第 %d 个 Reduce 任务完成创建\n", i)
+	}
+}
 
 // 遍历状态表，检测是否全部完成
 func (c *Coordinator) isAllFinished() bool {

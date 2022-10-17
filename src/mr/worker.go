@@ -115,6 +115,29 @@ func Worker(mapf func(string, string) []KeyValue,
 				file.Close()
 			}
 			sort.Sort(ByKey(kva))
+			oname := fmt.Sprintf("mr-out-%d", task.TaskNo)
+			file, err := os.Create(oname)
+			if err != nil {
+				log.Fatal("Worker::Reduce Failed to read file: " + task.FileName)
+			}
+			i := 0
+			for i < len(kva) {
+				//将相同的key放在一起分组合并
+				j := i + 1
+				for j < len(kva) && kva[j].Key == kva[i].Key {
+					j++
+				}
+				values := []string{}
+				for k := i; k < j; k++ {
+					values = append(values, kva[k].Value)
+				}
+				//交给reducef，拿到结果
+				output := reducef(kva[i].Key, values)
+				fmt.Fprintf(file, "%v %v\n", kva[i].Key, output)
+				i = j
+			}
+			file.Close()
+			task.FileName = oname
 
 		case Wait:
 			time.Sleep(5 * time.Second)
@@ -138,7 +161,6 @@ func CallExample() {
 
 	// declare a reply structure.
 	reply := ExampleReply{}
-
 	// send the RPC request, wait for the reply.
 	// the "Coordinator.Example" tells the
 	// receiving server that we'd like to call

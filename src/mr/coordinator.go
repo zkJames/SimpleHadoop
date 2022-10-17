@@ -91,8 +91,8 @@ func (c *Coordinator) server() {
 func (c *Coordinator) Done() bool {
 	mu.Lock()
 	defer mu.Unlock()
-	ret := c.TotalType == Stop
-	return ret
+	// 如果状态为Stop，则直接返回true
+	return c.TotalType == Stop
 }
 
 // 由worker调用，分配任务
@@ -112,23 +112,49 @@ func (c *Coordinator) AssignTask(args *ExampleArgs, reply *Task) error {
 }
 
 // 接收到mapper处理过后的task
-func (c *Coordinator) ReceiveBackTask(task *Task, reply *ExampleReply) error {
+func (c *Coordinator) ReceiveMapBackTask(task *Task, reply *ExampleReply) error {
 	mu.Lock()
 	defer mu.Unlock()
-	fmt.Printf("coordinator::ReceiveBackTask %d 任务\n", task.TaskNo)
-	// 如果在Reduce阶段收到了迟来的MapTask返回，或者此任务已经完成，应该丢弃
-	if task.TaskType != c.TotalType || c.TaskStatusMap[task.TaskNo].StatusNow == Finished {
+	fmt.Printf("coordinator::ReceiveMapBackTask %d 任务\n", task.TaskNo)
+	// 如果现在已经不是Map阶段，或者此任务已经完成，应该丢弃
+	if c.TotalType != Map || c.TaskStatusMap[task.TaskNo].StatusNow == Finished {
 		return nil
 	}
-	fmt.Printf("coordinator:::::%d 任务已完成\n", task.TaskNo)
 	c.TaskStatusMap[task.TaskNo].StatusNow = Finished //标记此任务完成，若每个Task都拥有了此标记，则退出Map
 	// 启动协程， 保存中间文件的路径
-	go c.handleTaskResult(task)
+	go c.handleMapTaskResult(task)
 	return nil
 }
 
-// 解析任务，存储信息
-func (c *Coordinator) handleTaskResult(task *Task) {
+// 接收到reducer处理过后的task
+func (c *Coordinator) ReceiveReducerBackTask(task *Task, reply *ExampleReply) error {
+	mu.Lock()
+	defer mu.Unlock()
+	fmt.Printf("coordinator::ReceiveReducerBackTask %d 任务\n", task.TaskNo)
+	// 如果在Reduce阶段收到了非Reduce的任务，或者此任务已经完成，应该丢弃
+	if task.TaskType != Reduce || c.TaskStatusMap[task.TaskNo].StatusNow == Finished {
+		return nil
+	}
+	fmt.Printf("coordinator::reducer结果路径 %v\n", task.FileName)
+	c.TaskStatusMap[task.TaskNo].StatusNow = Finished //标记此任务完成，若每个Task都拥有了此标记，则退出Reduce
+	go c.handleReduceTaskResult(task)
+	return nil
+}
+
+// Reduce结果处理
+func (c *Coordinator) handleReduceTaskResult(task *Task) {
+	mu.Lock()
+	defer mu.Unlock()
+	// 如果任务全部完成了，全局状态转换为Stop,Reduce阶段结束
+	if c.isAllFinished() {
+		fmt.Printf("coordinator::Reduce任务已经全部完成,进入Stop状态\n")
+		c.TotalType = Stop
+	}
+	fmt.Printf("coordinator::存入了第 %v 个任务中间文件路径\n", task.TaskNo)
+}
+
+// 解析Map任务，存储信息
+func (c *Coordinator) handleMapTaskResult(task *Task) {
 	mu.Lock()
 	defer mu.Unlock()
 	// 按照reduceNo，保存返回的文件路径
@@ -139,14 +165,14 @@ func (c *Coordinator) handleTaskResult(task *Task) {
 	if c.isAllFinished() {
 		fmt.Printf("coordinator::Map任务已经全部完成,进入Reduce状态\n")
 		fmt.Printf("coordinator:::::Map最终中间文件位置: %v\n", c.IntermediateMap)
+		c.TotalType = Reduce
 		c.enqueueReduceTasks()
 	}
-	fmt.Printf("存入了第 %v 个任务中间文件路径\n", task.TaskNo)
+	fmt.Printf("coordinator::存入了第 %v 个任务中间文件路径\n", task.TaskNo)
 }
 
 // 产生Map Tasks
 func (c *Coordinator) enqueueMapTasks(files []string) {
-	c.TotalType = Map
 	//根据文件数量创建Task
 	for index, fileName := range files {
 		// 初始化Task
@@ -170,7 +196,6 @@ func (c *Coordinator) enqueueMapTasks(files []string) {
 // 产生Reduce Tasks
 func (c *Coordinator) enqueueReduceTasks() {
 	c.TaskStatusMap = make(map[int]*TaskStatus)
-	c.TotalType = Reduce
 	//根据nReduce数量创建Task
 	for i := 0; i < c.NReduce; i++ {
 		// 初始化Task
@@ -218,6 +243,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		TaskQueue:       make(chan *Task, max(len(files), nReduce)),
 		TaskStatusMap:   make(map[int]*TaskStatus),
 		NReduce:         nReduce,
+		TotalType:       Map, //初始全局阶段为Map
 		IntermediateMap: make(map[int][]string),
 	}
 	// 创建Map任务

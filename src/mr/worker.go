@@ -50,6 +50,7 @@ func getTask() Task {
 // 处理Task后，将结果发送给Coordinator
 func returnTask(task *Task) {
 	rpcName := ""
+	// 根据Map/Reduce的返回，判断发送的接口
 	if task.TaskType == Map {
 		rpcName = "Coordinator.ReceiveBackMapTask"
 	} else if task.TaskType == Reduce {

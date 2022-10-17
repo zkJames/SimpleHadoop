@@ -130,7 +130,7 @@ func (c *Coordinator) ReceiveBackMapTask(task *Task, reply *ExampleReply) error 
 func (c *Coordinator) ReceiveBackReduceTask(task *Task, reply *ExampleReply) error {
 	mu.Lock()
 	defer mu.Unlock()
-	fmt.Printf("coordinator::ReceiveReducerBackTask %d 任务\n", task.TaskNo)
+	fmt.Printf("coordinator::ReceiveBackReduceTask %d 任务\n", task.TaskNo)
 	// 如果在Reduce阶段收到了非Reduce的任务，或者此任务已经完成，应该丢弃
 	if task.TaskType != Reduce || c.TaskStatusMap[task.TaskNo].StatusNow == Finished {
 		return nil

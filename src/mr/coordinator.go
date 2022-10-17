@@ -100,13 +100,13 @@ func (c *Coordinator) AssignTask(args *ExampleArgs, reply *Task) error {
 	// 从队列取一个任务
 	mu.Lock()
 	defer mu.Unlock()
-	// 如果队列不为空
-	if len(c.TaskQueue) != 0 {
-		// 出队一个Task
-		*reply = *<-c.TaskQueue
+	if len(c.TaskQueue) != 0 { // 如果队列不为空
+		*reply = *<-c.TaskQueue // 出队一个Task
 		c.TaskStatusMap[reply.TaskNo].StatusNow = Assigned
+	} else if c.TotalType == Stop { //任务结束返回stop 假Task
+		*reply = Task{TaskType: Stop}
 	} else {
-		*reply = Task{TaskType: Wait}
+		*reply = Task{TaskType: Wait} //任务未结束，等待下一波任务
 	}
 	return nil
 }

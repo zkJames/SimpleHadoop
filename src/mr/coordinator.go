@@ -112,7 +112,7 @@ func (c *Coordinator) AssignTask(args *ExampleArgs, reply *Task) error {
 }
 
 // 接收到mapper处理过后的task
-func (c *Coordinator) ReceiveMapBackTask(task *Task, reply *ExampleReply) error {
+func (c *Coordinator) ReceiveBackMapTask(task *Task, reply *ExampleReply) error {
 	mu.Lock()
 	defer mu.Unlock()
 	fmt.Printf("coordinator::ReceiveMapBackTask %d 任务\n", task.TaskNo)
@@ -127,7 +127,7 @@ func (c *Coordinator) ReceiveMapBackTask(task *Task, reply *ExampleReply) error 
 }
 
 // 接收到reducer处理过后的task
-func (c *Coordinator) ReceiveReducerBackTask(task *Task, reply *ExampleReply) error {
+func (c *Coordinator) ReceiveBackReduceTask(task *Task, reply *ExampleReply) error {
 	mu.Lock()
 	defer mu.Unlock()
 	fmt.Printf("coordinator::ReceiveReducerBackTask %d 任务\n", task.TaskNo)

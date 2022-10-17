@@ -49,9 +49,15 @@ func getTask() Task {
 
 // 处理Task后，将结果发送给Coordinator
 func returnTask(task *Task) {
+	rpcName := ""
+	if task.TaskType == Map {
+		rpcName = "Coordinator.ReceiveBackMapTask"
+	} else if task.TaskType == Reduce {
+		rpcName = "Coordinator.ReceiveBackReduceTask"
+	}
 	fmt.Printf("return %v task\n", task.TaskNo)
 	reply := ExampleReply{}
-	ok := call("Coordinator.ReceiveBackTask", task, &reply)
+	ok := call(rpcName, task, &reply)
 	if ok {
 		fmt.Printf("return %v task successfully\n", task.TaskNo)
 	} else {
@@ -138,7 +144,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			}
 			file.Close()
 			task.FileName = oname
-
+			returnTask(&task)
 		case Wait:
 			time.Sleep(5 * time.Second)
 		}

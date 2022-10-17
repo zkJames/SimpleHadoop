@@ -66,6 +66,83 @@ func returnTask(task *Task) {
 	}
 }
 
+// 处理Map类型的task
+func handleMapTask(task *Task, mapf func(string, string) []KeyValue) {
+	content, err := ioutil.ReadFile(task.FileName)
+	if err != nil {
+		log.Fatal("Worker::Map Failed to read file: " + task.FileName)
+	}
+	//将coordinator 传入的文件名对应的文件读取，得到kv的数组
+	kvs := mapf(task.FileName, string(content)) // 调用mapf把内容转化为kv
+	kvmap := make(map[int][]KeyValue)           //key:reduce号  v:kv 列表
+	// 将kvs按照哈希值分到nReduce个区域中
+	for _, kv := range kvs {
+		reduceID := ihash(kv.Key) % task.NReduce
+		kvmap[reduceID] = append(kvmap[reduceID], kv)
+	}
+	mapResultNames := make(map[int]string) //返回每个路径
+	for reduceNo, kvs := range kvmap {
+		outputName := fmt.Sprintf("mr-%d-%d", task.TaskNo, reduceNo)
+		file, _ := os.Create(outputName)
+		enc := json.NewEncoder(file)
+		for _, kv := range kvs {
+			enc.Encode(kv)
+		}
+		file.Close()
+		// 保存路径
+		mapResultNames[reduceNo] = outputName
+	}
+	fmt.Printf("Worker::第%d个任务,发回了%d个文件结果\n", task.TaskNo, len(mapResultNames))
+	//将文件路径map装入task 发回Coordinator
+	task.MapResultNames = mapResultNames
+	returnTask(task)
+}
+
+// 处理reduce类型的task
+func handleReduceTask(task *Task, reducef func(string, []string) string) {
+	kva := []KeyValue{}
+	for _, filepath := range task.ReduceFileNames {
+		file, err := os.Open(filepath)
+		if err != nil {
+			log.Fatal("Worker::Reducer Failed to open file "+filepath, err)
+		}
+		dec := json.NewDecoder(file)
+		for {
+			var kv KeyValue
+			if err := dec.Decode(&kv); err != nil {
+				break
+			}
+			kva = append(kva, kv)
+		}
+		file.Close()
+	}
+	sort.Sort(ByKey(kva))
+	oname := fmt.Sprintf("mr-out-%d", task.TaskNo)
+	file, err := os.Create(oname)
+	if err != nil {
+		log.Fatal("Worker::Reduce Failed to read file: " + task.FileName)
+	}
+	i := 0
+	for i < len(kva) {
+		//将相同的key放在一起分组合并
+		j := i + 1
+		for j < len(kva) && kva[j].Key == kva[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, kva[k].Value)
+		}
+		//交给reducef，拿到结果
+		output := reducef(kva[i].Key, values)
+		fmt.Fprintf(file, "%v %v\n", kva[i].Key, output)
+		i = j
+	}
+	file.Close()
+	task.FileName = oname
+	returnTask(task)
+}
+
 //
 // main/mrworker.go calls this function.
 //
@@ -76,76 +153,9 @@ func Worker(mapf func(string, string) []KeyValue,
 		fmt.Printf("Worker::获取第%d个任务 %d类型\n", task.TaskNo, task.TaskType)
 		switch task.TaskType {
 		case Map:
-			content, err := ioutil.ReadFile(task.FileName)
-			if err != nil {
-				log.Fatal("Worker::Map Failed to read file: " + task.FileName)
-			}
-			//将coordinator 传入的文件名对应的文件读取，得到kv的数组
-			kvs := mapf(task.FileName, string(content)) // 调用mapf把内容转化为kv
-			kvmap := make(map[int][]KeyValue)           //key:reduce号  v:kv 列表
-			// 将kvs按照哈希值分到nReduce个区域中
-			for _, kv := range kvs {
-				reduceID := ihash(kv.Key) % task.NReduce
-				kvmap[reduceID] = append(kvmap[reduceID], kv)
-			}
-			mapResultNames := make(map[int]string) //返回每个路径
-			for reduceNo, kvs := range kvmap {
-				outputName := fmt.Sprintf("mr-%d-%d", task.TaskNo, reduceNo)
-				file, _ := os.Create(outputName)
-				enc := json.NewEncoder(file)
-				for _, kv := range kvs {
-					enc.Encode(kv)
-				}
-				file.Close()
-				// 保存路径
-				mapResultNames[reduceNo] = outputName
-			}
-			fmt.Printf("Worker::第%d个任务,发回了%d个文件结果\n", task.TaskNo, len(mapResultNames))
-			//将文件路径map装入task 发回Coordinator
-			task.MapResultNames = mapResultNames
-			returnTask(&task)
+			handleMapTask(&task, mapf)
 		case Reduce:
-			kva := []KeyValue{}
-			for _, filepath := range task.ReduceFileNames {
-				file, err := os.Open(filepath)
-				if err != nil {
-					log.Fatal("Worker::Reducer Failed to open file "+filepath, err)
-				}
-				dec := json.NewDecoder(file)
-				for {
-					var kv KeyValue
-					if err := dec.Decode(&kv); err != nil {
-						break
-					}
-					kva = append(kva, kv)
-				}
-				file.Close()
-			}
-			sort.Sort(ByKey(kva))
-			oname := fmt.Sprintf("mr-out-%d", task.TaskNo)
-			file, err := os.Create(oname)
-			if err != nil {
-				log.Fatal("Worker::Reduce Failed to read file: " + task.FileName)
-			}
-			i := 0
-			for i < len(kva) {
-				//将相同的key放在一起分组合并
-				j := i + 1
-				for j < len(kva) && kva[j].Key == kva[i].Key {
-					j++
-				}
-				values := []string{}
-				for k := i; k < j; k++ {
-					values = append(values, kva[k].Value)
-				}
-				//交给reducef，拿到结果
-				output := reducef(kva[i].Key, values)
-				fmt.Fprintf(file, "%v %v\n", kva[i].Key, output)
-				i = j
-			}
-			file.Close()
-			task.FileName = oname
-			returnTask(&task)
+			handleReduceTask(&task, reducef)
 		case Wait:
 			time.Sleep(5 * time.Second)
 		}

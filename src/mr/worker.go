@@ -34,19 +34,6 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-// 从coordinator获取一个Task
-func getTask() Task {
-	task := Task{}
-	args := ExampleArgs{}
-	ok := call("Coordinator.AssignTask", &args, &task)
-	if ok {
-		fmt.Printf("get the %v task\n", task.TaskNo)
-	} else {
-		fmt.Printf("get task failed!\n")
-	}
-	return task
-}
-
 // 处理Task后，将结果发送给Coordinator
 func returnTask(task *Task) {
 	rpcName := ""
@@ -149,7 +136,15 @@ func handleReduceTask(task *Task, reducef func(string, []string) string) {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	for {
-		task := getTask()
+		task := Task{}
+		args := ExampleArgs{}
+		ok := call("Coordinator.AssignTask", &args, &task)
+		if ok {
+			fmt.Printf("get the %v task\n", task.TaskNo)
+		} else {
+			fmt.Printf("get task failed!\n")
+			continue
+		}
 		fmt.Printf("Worker::获取第%d个任务 %d类型\n", task.TaskNo, task.TaskType)
 		switch task.TaskType {
 		case Map:
@@ -166,34 +161,6 @@ func Worker(mapf func(string, string) []KeyValue,
 		}
 	}
 
-}
-
-//
-// example function to show how to make an RPC call to the coordintor.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func CallExample() {
-
-	// declare an argument structure.
-	args := ExampleArgs{}
-
-	// fill in the argument(s).
-	args.X = 99
-
-	// declare a reply structure.
-	reply := ExampleReply{}
-	// send the RPC request, wait for the reply.
-	// the "Coordinator.Example" tells the
-	// receiving server that we'd like to call
-	// the Example() method of struct Coordinator.
-	ok := call("Coordinator.Example", &args, &reply)
-	if ok {
-		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
-	} else {
-		fmt.Printf("call failed!\n")
-	}
 }
 
 //

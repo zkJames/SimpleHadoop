@@ -15,8 +15,8 @@ import (
 var mu sync.Mutex
 
 const (
-	MaxWaitTime      = 5 // 超时任务最长等待时间s
-	PollingCheckTime = 5 // 轮询周期s
+	MaxWaitTime      = 10 // 超时任务最长等待时间s
+	PollingCheckTime = 5  // 轮询周期s
 )
 
 // 任务类型枚举

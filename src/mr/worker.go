@@ -153,11 +153,16 @@ func Worker(mapf func(string, string) []KeyValue,
 		fmt.Printf("Worker::获取第%d个任务 %d类型\n", task.TaskNo, task.TaskType)
 		switch task.TaskType {
 		case Map:
+			fmt.Printf("Worker::收到了 %d Map任务\n", task.TaskNo)
 			handleMapTask(&task, mapf)
 		case Reduce:
+			fmt.Printf("Worker::收到了 %d Reduce任务\n", task.TaskNo)
 			handleReduceTask(&task, reducef)
 		case Wait:
 			time.Sleep(5 * time.Second)
+		case Stop:
+			fmt.Printf("Worker::收到了 stop 任务,停止此worker\n")
+			return
 		}
 	}
 

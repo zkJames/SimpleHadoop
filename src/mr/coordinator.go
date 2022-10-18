@@ -8,10 +8,16 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 // 互斥锁
 var mu sync.Mutex
+
+const (
+	MaxWaitTime      = 5 // 超时任务最长等待时间s
+	PollingCheckTime = 5 // 轮询周期s
+)
 
 // 任务类型枚举
 type Type int
@@ -27,9 +33,9 @@ const (
 type Status int
 
 const (
-	UnAssigned Status = iota //未分配
-	Assigned                 //已分配
-	Finished                 //完成
+	Idle     Status = iota //未分配
+	Assigned               //已分配
+	Finished               //完成
 )
 
 //任务
@@ -44,8 +50,9 @@ type Task struct {
 
 //任务状态结构体
 type TaskStatus struct {
-	StatusNow Status //此任务当前的状态
-	TaskRef   *Task  //指向任务
+	StatusNow    Status    //此任务当前的状态
+	TaskRef      *Task     //指向任务
+	AssignedTime time.Time //任务分配时间（用于超时crash检测）
 }
 
 // 定义在Coordinator中的变量
@@ -103,6 +110,7 @@ func (c *Coordinator) AssignTask(args *ExampleArgs, reply *Task) error {
 	if len(c.TaskQueue) != 0 { // 如果队列不为空
 		*reply = *<-c.TaskQueue // 出队一个Task
 		c.TaskStatusMap[reply.TaskNo].StatusNow = Assigned
+		c.TaskStatusMap[reply.TaskNo].AssignedTime = time.Now()
 	} else if c.TotalType == Stop { //任务结束返回stop 假Task
 		*reply = Task{TaskType: Stop}
 	} else {
@@ -131,7 +139,8 @@ func (c *Coordinator) ReceiveBackReduceTask(task *Task, reply *ExampleReply) err
 	mu.Lock()
 	defer mu.Unlock()
 	fmt.Printf("coordinator::ReceiveBackReduceTask %d 任务\n", task.TaskNo)
-	// 如果在Reduce阶段收到了非Reduce的任务，或者此任务已经完成，应该丢弃
+	// 如果在Reduce阶段收到了非Reduce的任务，丢弃
+	// 此任务已经完成，丢弃（crash检测中因为太慢而分配了新的任务）
 	if task.TaskType != Reduce || c.TaskStatusMap[task.TaskNo].StatusNow == Finished {
 		return nil
 	}
@@ -185,7 +194,7 @@ func (c *Coordinator) enqueueMapTasks(files []string) {
 		// 把任务状态存入map中
 		c.TaskStatusMap[index] = &TaskStatus{
 			TaskRef:   &task,
-			StatusNow: UnAssigned,
+			StatusNow: Idle,
 		}
 		// 把Task入队
 		c.TaskQueue <- &task
@@ -208,11 +217,32 @@ func (c *Coordinator) enqueueReduceTasks() {
 		// 把任务状态存入map中
 		c.TaskStatusMap[i] = &TaskStatus{
 			TaskRef:   &task,
-			StatusNow: UnAssigned,
+			StatusNow: Idle,
 		}
-		// 把Task入队
-		c.TaskQueue <- &task
+		c.TaskQueue <- &task // 把Task入队
 		fmt.Printf("Coordinator::第 %d 个 Reduce 任务完成创建\n", i)
+	}
+}
+
+// 循环检测超时任务
+func (c *Coordinator) pollingCheckCrash() {
+	// 如果全局状态不是stop，每CheckPeriodTime秒检测一次
+	for {
+		mu.Lock()
+		if c.TotalType == Stop { //如果已经停止，解锁退出
+			mu.Unlock()
+			return
+		}
+		for index, taskStatus := range c.TaskStatusMap {
+			// 某任务已经分配，而且超过了规定的时间
+			if taskStatus.StatusNow == Assigned && time.Since(taskStatus.AssignedTime) > MaxWaitTime*time.Second {
+				fmt.Printf("Coordinator::%v号任务超时,重新分配\n ", index)
+				taskStatus.StatusNow = Idle       //设置为空闲
+				c.TaskQueue <- taskStatus.TaskRef //重新入队
+			}
+		}
+		mu.Unlock()
+		time.Sleep(PollingCheckTime * time.Second)
 	}
 }
 
@@ -250,5 +280,6 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	fmt.Printf("Coordinator::开始创建Map任务\n")
 	c.enqueueMapTasks(files)
 	c.server()
+	go c.pollingCheckCrash() // 启动超时任务轮询
 	return &c
 }
